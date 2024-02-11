@@ -75,12 +75,17 @@ def main(year_start=2022):
 
 
         # Select year
-        from_dropdown = driver.find_element(by=By.XPATH, value=form_options_year['from']['xpath'])
-        to_dropdown = driver.find_element(by=By.XPATH, value=form_options_year['to']['xpath'])
-        # driver.execute_script(scroll_into_view_js_code, to_dropdown)  # scroll into view
         date_to_and_from_option_xpath = f'//ul[@class="select2-results__options"]/li[contains(text(), "{year}")]'
-        dropdown_select_by_text(driver, from_dropdown, date_to_and_from_option_xpath)
-        dropdown_select_by_text(driver, to_dropdown, date_to_and_from_option_xpath)
+
+        # From year
+        scroll_to_form(driver)
+        from_dropdown = driver.find_element(by=By.XPATH, value=form_options_year['from']['xpath'])
+        dropdown_select_by_text(driver, from_dropdown, date_to_and_from_option_xpath, scroll_for_date=True)
+
+        # To year
+        to_dropdown = driver.find_element(by=By.XPATH, value=form_options_year['to']['xpath'])
+        dropdown_select_by_text(driver, to_dropdown, date_to_and_from_option_xpath, scroll_for_date=True)
+
 
         kereses_button.click()
         time.sleep(2)
@@ -156,12 +161,36 @@ def collect_page_rows_and_go_to_next(driver):
     return
 
 
-def dropdown_select_by_text(driver, dropdown, form_value_option_xpath):
+def dropdown_select_by_text(driver, dropdown, form_value_option_xpath, scroll_for_date=False):
     dropdown.click()
+    if scroll_for_date:
+        scroll_form_dropdowns(driver)
     time.sleep(0.5)
     dropdown_option = driver.find_element(by=By.XPATH, value=form_value_option_xpath)  # select2-results__option
     dropdown_option.click()
-    # ActionChains(driver).send_keys(Keys.ESCAPE).perform()  # Maybe don't need
+
+
+def scroll_form_dropdowns(driver):
+    last_elm = driver.find_elements(by=By.XPATH, value='.//li[@class="select2-results__option"]')[-1]
+    driver.execute_script("arguments[0].scrollIntoView(true);", last_elm)
+    time.sleep(1)
+    next_last_elm = driver.find_elements(by=By.XPATH, value='.//li[@class="select2-results__option"]')[-1]
+    scroll_to_form(driver)
+
+    while last_elm.text != next_last_elm.text:
+        driver.execute_script("arguments[0].scrollIntoView(true);", next_last_elm)
+        scroll_to_form(driver)
+        last_elm = next_last_elm
+        next_last_elm = driver.find_elements(by=By.XPATH, value='.//li[@class="select2-results__option"]')[-1]
+        scroll_to_form(driver)
+        time.sleep(0.5)
+
+
+def scroll_to_form(driver):
+    # Form div
+    form_container = driver.find_element(by=By.XPATH, value='//div[@class="main-content content searchParams"]')
+    # Move
+    driver.execute_script("arguments[0].scrollIntoView(true);", form_container)
 
 
 if __name__ == '__main__':
