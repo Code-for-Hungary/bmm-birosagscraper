@@ -43,14 +43,18 @@ class Hatarozat(Base):
     kollegium = Column(String(250), nullable=False)
     jogterulet = Column(String(250), nullable=False)
     year = Column(Integer, index=True, nullable=False)
+
     # Details
     egyedi_azonosito = Column(String(250), unique=True, index=True, nullable=False)
-    # kapcsolodo_hatarozatok
     jogszabalyhelyek = Column(String)
     elvi_tartalma = Column(String)
+
     # Additional
     url = Column(String)
     filepath = Column(String)
+
+    # Text of hatarozat
+    hatarozat_text = Column(String, nullable=True)
 
     def __repr__(self) -> str:
         return f"Hatarozat(id={self.id!r}, sorszam={self.sorszam!r}, year={self.year!r})"

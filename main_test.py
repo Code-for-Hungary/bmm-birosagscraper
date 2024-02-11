@@ -58,6 +58,7 @@ def main(year_start=2022):
     kapcsolodo_hatarozatok_pairs = set()
 
     for combination in form_combinations:
+        print(f'RUNNING SEARCH COMBINATION: {combination}')
         time.sleep(1)
         year = combination.pop('year')
 
@@ -164,4 +165,4 @@ def dropdown_select_by_text(driver, dropdown, form_value_option_xpath):
 
 
 if __name__ == '__main__':
-    main(year_start=2022)
+    main(year_start=1988)
