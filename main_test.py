@@ -1,6 +1,7 @@
 import pickle
 import time
 
+import jsonlines
 from selenium.webdriver import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -23,7 +24,7 @@ next_page_enabled_button_xpath = '//button[@class="grid-pager btn btn-default gr
 next_page_disabled_button_xpath = '//button[@class="grid-pager btn btn-default grid-pager-next disabled"]'
 
 
-def main():
+def main(out_filename, select_year=None):
     driver.get("https://eakta.birosag.hu/anonimizalt-hatarozatok")
     driver.implicitly_wait(1)
 
@@ -34,18 +35,7 @@ def main():
     tobb_szuro_button = driver.find_element(by=By.XPATH, value='//button[@class="custom-button white collapse-button"]')
     tobb_szuro_button.click()
 
-    form_options = extract_form_options(driver)
-
-    form_combinations = get_form_option_and_date_combinations(form_options, year_start=2022)
-
-    for year, (form_option, form_value) in form_combinations:
-
-        # Select form option
-        form_value_option_xpath = f'//ul[@class="select2-results__options"]/li[contains(text(), "{form_value}")]'
-        dropdown = driver.find_element(by=By.XPATH, value=form_xpaths[form_option]['xpath'])
-        dropdown_select_by_text(driver, dropdown, form_value_option_xpath)
-        time.sleep(2)
-
+    if select_year is not None:  # TODO
         # Select year
         from_dropdown = driver.find_element(by=By.XPATH, value=form_options_year['from']['xpath'])
         to_dropdown = driver.find_element(by=By.XPATH, value=form_options_year['to']['xpath'])
@@ -60,28 +50,28 @@ def main():
 
         kereses_button.click()
         time.sleep(2)
-        # Make sure results are not truncated.
-        number_of_results = driver.find_element(by=By.XPATH,
-                                                value='//div[@class="table-data main-content"]/div[@class="count-wrappe'
-                                                      'r"]/span[@class="listCountHolder"]').text.strip()
-        if number_of_results == '10000+':
-            raise NotImplementedError('Too many results, cannot be certain of parsing all results!')
+    time.sleep(0.5)
+    # Set pagination page size to 100
+    driver.find_element(by=By.XPATH, value=oldalmeret_dropdown_xpath).click()
+    driver.find_element(by=By.XPATH, value=oldalmeret_100_option_xpath).click()
 
-        # Extract rows data
-        get_rows(driver)
+    with jsonlines.open(out_filename, 'w') as fh:
+        for res in collect_page_rows_and_go_to_next(driver):
+            fh.write(res)
 
-        # Set pagination page size to 100
-        driver.find_element(by=By.XPATH, value=oldalmeret_dropdown_xpath).click()
-        driver.find_element(by=By.XPATH, value=oldalmeret_100_option_xpath).click()
 
-        # Next page
-        next_page_disabled_button = driver.find_elements(by=By.XPATH, value=next_page_disabled_button_xpath)
-        # TODO
-        if len(next_page_disabled_button) > 0:
-            continue  # go to next form combination
-        else:
-            next_page_enabled_button = driver.find_elements(by=By.XPATH, value=next_page_enabled_button_xpath)
-            next_page_enabled_button.click()
+def collect_page_rows_and_go_to_next(driver):
+    # Extract rows data
+    yield from get_rows(driver)
+
+    # Next page
+    next_page_button = simple_find_or_none(driver, '//button[@class="grid-pager btn btn-default grid-pager-next"]')
+    disabled_attr = next_page_button.get_attribute('disabled')
+    if disabled_attr is None:
+        next_page_button.click()
+        time.sleep(1)
+        yield from collect_page_rows_and_go_to_next(driver)
+    return
 
 
 def dropdown_select_by_text(driver, dropdown, form_value_option_xpath):
@@ -95,4 +85,4 @@ def dropdown_select_by_text(driver, dropdown, form_value_option_xpath):
 
 
 if __name__ == '__main__':
-    main()
+    main('data/all_results.jsonl')
