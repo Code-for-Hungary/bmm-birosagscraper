@@ -5,10 +5,10 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver import ActionChains
 
 form_xpaths = {
-        'ugycsoport': {'xpath': '//span[@id="select2-Ugycsoport-container"]', 'scroll': True},
+        # 'ugycsoport': {'xpath': '//span[@id="select2-Ugycsoport-container"]', 'scroll': True},
         # 'jogterulet': {'xpath': '//span[@id="select2-Jogterulet-container"]'},
-        # 'hatarozat_fajtaja': {'xpath': '//span[@id="select2-HatarozatFajta-container"]'},
-        # 'kollegium': {'xpath': '//span[@id="select2-Kollegium-container"]'},
+        'hatarozat_fajtaja': {'xpath': '//span[@id="select2-HatarozatFajta-container"]'},
+        'kollegium': {'xpath': '//span[@id="select2-Kollegium-container"]'},
     }
 
 

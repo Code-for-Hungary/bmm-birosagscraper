@@ -1,14 +1,19 @@
-import pickle
 import time
+from itertools import combinations, islice
 
 from selenium.webdriver import ActionChains
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
+from sqlalchemy import insert, select
 
-from selenium_base import driver
-from utils import get_form_option_and_date_combinations, simple_find_or_none
-from form_options_extraction import extract_form_options, form_xpaths, scroll_form_dropdowns
+from selenium_base import create_driver
 from results_extraction import get_rows
+from form_options_extraction import extract_form_options, form_xpaths
+from utils import get_form_option_and_date_combinations, simple_find_or_none
+
+from sql_stuff.database import Session
+from sql_stuff.models import Hatarozat, kapcsolodo_hatarozatok_table
+
+scroll_into_view_js_code = "arguments[0].scrollIntoView();"
 
 form_options_year = {
     'from': {'xpath': '//span[@id="select2-MeghozatalIdejeTol-container"]'},
@@ -16,16 +21,23 @@ form_options_year = {
 }
 
 oldalmeret_dropdown_xpath = '//span[@id="select2-page-size-container"]'
-# oldalmeret_100_option_xpath = '//li[@id="select2-page-size-result-viss-100"]'
 oldalmeret_100_option_xpath = '//li[contains(text(), "100")]'
 
 next_page_enabled_button_xpath = '//button[@class="grid-pager btn btn-default grid-pager-next"]'
 next_page_disabled_button_xpath = '//button[@class="grid-pager btn btn-default grid-pager-next disabled"]'
 
+hatarozat_cols = {'sorszam', 'birosag', 'kollegium', 'jogterulet', 'year', 'egyedi_azonosito', 'jogszabalyhelyek',
+                  'elvi_tartalma', 'kapcsolodo_hatarozatok'}
 
-def main():
+
+def main(year_start=2022):
+
+    driver = create_driver()
     driver.get("https://eakta.birosag.hu/anonimizalt-hatarozatok")
-    driver.implicitly_wait(1)
+    driver.implicitly_wait(2)
+    # driver.execute_script("document.body.style.zoom = '50%'")
+    driver.maximize_window()
+    time.sleep(2)
 
     # Keresés gomb
     kereses_button = driver.find_element(by=By.XPATH, value='//button[@class="filter-button custom-button float-left"]')
@@ -35,25 +47,36 @@ def main():
     tobb_szuro_button.click()
 
     form_options = extract_form_options(driver)
+    form_combinations = get_form_option_and_date_combinations(form_options, year_start=year_start)
 
-    form_combinations = get_form_option_and_date_combinations(form_options, year_start=2022)
+    # Saved hatarozatok
+    with Session() as session:
+        existing_hatarozat_sorszam = [s for s in session.execute(select(Hatarozat.sorszam))]
+        existing_hatarozat_sorszam = set(existing_hatarozat_sorszam)
 
-    for year, (form_option, form_value) in form_combinations:
+    # Kapcsolodo hatarozatok save
+    kapcsolodo_hatarozatok_pairs = set()
 
-        # Select form option
-        form_value_option_xpath = f'//ul[@class="select2-results__options"]/li[contains(text(), "{form_value}")]'
-        dropdown = driver.find_element(by=By.XPATH, value=form_xpaths[form_option]['xpath'])
-        dropdown_select_by_text(driver, dropdown, form_value_option_xpath)
-        time.sleep(2)
+    for combination in form_combinations:
+        time.sleep(1)
+        year = combination.pop('year')
+
+        for form_option, form_value in combination.items():
+            # Select form option
+            form_value_option_xpath = f'//ul[@class="select2-results__options"]/li[contains(text(), "{form_value}")]'
+            dropdown = driver.find_element(by=By.XPATH, value=form_xpaths[form_option]['xpath'])
+            ActionChains(driver).move_to_element(dropdown).perform()
+
+            # driver.execute_script(scroll_into_view_js_code, dropdown)  # scroll into view
+            time.sleep(1)
+            # dropdown = driver.find_element(by=By.XPATH, value=form_xpaths[form_option]['xpath'])
+            dropdown_select_by_text(driver, dropdown, form_value_option_xpath)
+
 
         # Select year
         from_dropdown = driver.find_element(by=By.XPATH, value=form_options_year['from']['xpath'])
         to_dropdown = driver.find_element(by=By.XPATH, value=form_options_year['to']['xpath'])
-        # for from_to_dropdown in (from_dropdown, to_dropdown):  # Remove year if previously set
-        #     selection_x = simple_find_or_none(from_to_dropdown, '//span[@class="select2-selection__clear"]')
-        #     if selection_x is not None:
-        #         selection_x.click()
-        #         ActionChains(driver).send_keys(Keys.ESCAPE).perform()
+        # driver.execute_script(scroll_into_view_js_code, to_dropdown)  # scroll into view
         date_to_and_from_option_xpath = f'//ul[@class="select2-results__options"]/li[contains(text(), "{year}")]'
         dropdown_select_by_text(driver, from_dropdown, date_to_and_from_option_xpath)
         dropdown_select_by_text(driver, to_dropdown, date_to_and_from_option_xpath)
@@ -66,33 +89,79 @@ def main():
                                                       'r"]/span[@class="listCountHolder"]').text.strip()
         if number_of_results == '10000+':
             raise NotImplementedError('Too many results, cannot be certain of parsing all results!')
-
-        # Extract rows data
-        get_rows(driver)
+        elif number_of_results == '0':
+            continue
 
         # Set pagination page size to 100
         driver.find_element(by=By.XPATH, value=oldalmeret_dropdown_xpath).click()
         driver.find_element(by=By.XPATH, value=oldalmeret_100_option_xpath).click()
 
-        # Next page
-        next_page_disabled_button = driver.find_elements(by=By.XPATH, value=next_page_disabled_button_xpath)
-        # TODO
-        if len(next_page_disabled_button) > 0:
-            continue  # go to next form combination
-        else:
-            next_page_enabled_button = driver.find_elements(by=By.XPATH, value=next_page_enabled_button_xpath)
-            next_page_enabled_button.click()
+        # Extract rows data
+        insert_rows_hatarozat = []
+        for res in collect_page_rows_and_go_to_next(driver):
+            # Check if saved
+            if res['sorszam'] not in existing_hatarozat_sorszam:
+                # Base values
+                hatarozat_vals = {k: v for k, v in res.items() if k in hatarozat_cols}
+                # URL
+                hatarozat_vals['url'] = "https://eakta.birosag.hu/anonimizalt-hatarozatok?azonosito="+hatarozat_vals['sorszam']
+                # Year
+                hatarozat_vals['year'] = year
+
+                # Kapcsolodo hatarozatok
+                kapcsolodo_hatarozatok = res.pop('kapcsolodo_hatarozatok', [])  # TODO can this be none?
+                if len(kapcsolodo_hatarozatok) > 0:
+                    kapcsolodo_hatarozatok.append(res['sorszam'])
+                    for pair in combinations(kapcsolodo_hatarozatok, 2):
+                        kapcsolodo_hatarozatok_pairs.add(tuple(sorted(pair)))
+
+                insert_rows_hatarozat.append(hatarozat_vals)
+
+        if len(insert_rows_hatarozat) > 0:
+            print(f'INSERTING {len(insert_rows_hatarozat)} HATAROZAT')
+            with Session() as session:
+                session.execute(
+                    insert(Hatarozat),
+                    insert_rows_hatarozat
+                )
+                session.commit()
+
+    kapcs_hat_it = iter(kapcsolodo_hatarozatok_pairs)
+    with Session() as session:
+        while True:
+            chunk = [{'id-1': sl[0], 'id-2': sl[1]} for sl in islice(kapcs_hat_it, 100)]
+            if not chunk:
+                break
+            session.execute(
+                insert(kapcsolodo_hatarozatok_table),
+                chunk
+            )
+
+
+def collect_page_rows_and_go_to_next(driver):
+    time.sleep(1)
+    # Extract rows data
+    yield from get_rows(driver)
+
+    # Next page
+    next_page_button = simple_find_or_none(driver, '//button[@class="grid-pager btn btn-default grid-pager-next"]')
+    # disabled_attr = next_page_button.get_attribute('disabled')
+    if next_page_button is not None:
+        # if disabled_attr is None:
+        ActionChains(driver).move_to_element(next_page_button).perform()
+        next_page_button.click()
+        time.sleep(1)
+        yield from collect_page_rows_and_go_to_next(driver)
+    return
 
 
 def dropdown_select_by_text(driver, dropdown, form_value_option_xpath):
     dropdown.click()
     time.sleep(0.5)
-    scroll_form_dropdowns(driver)
     dropdown_option = driver.find_element(by=By.XPATH, value=form_value_option_xpath)  # select2-results__option
     dropdown_option.click()
-    ActionChains(driver).send_keys(Keys.ESCAPE).perform()  # Maybe don't need
-    time.sleep(1)
+    # ActionChains(driver).send_keys(Keys.ESCAPE).perform()  # Maybe don't need
 
 
 if __name__ == '__main__':
-    main()
+    main(year_start=2022)

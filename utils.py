@@ -14,15 +14,18 @@ def simple_find_or_none(tag, xpath):
 
 
 def get_form_option_and_date_combinations(form_options: dict, year_start=1998):
+    keys = list(form_options.keys())
+    values = list(form_options.values())
 
-    key_value_pairs = [list(range(year_start, datetime.today().year+1))]
-    for key, values in form_options.items():
-        key_value_pairs_for_key = []
-        for value in values:
-            key_value_pairs_for_key.append((key, value))
-        key_value_pairs.append(key_value_pairs_for_key)
+    combinations = []
+    for year in range(year_start, datetime.today().year+1):
+        for combination_values in product(*values):
+            combination = {'year': year}
+            for key, value in zip(keys, combination_values):
+                combination[key] = value
+            combinations.append(combination)
 
-    return product(*key_value_pairs)
+    return combinations
 
 
 def get_form_combinations(form_options: dict):
