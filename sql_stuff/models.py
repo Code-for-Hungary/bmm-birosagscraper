@@ -38,7 +38,7 @@ class Hatarozat(Base):
     id = Column(Integer, primary_key=True)
 
     # Main columns
-    sorszam = Column(String(250), unique=True, index=True, nullable=False)
+    sorszam = Column(String(250), index=True, nullable=False)
     birosag = Column(String(250), nullable=False)
     kollegium = Column(String(250), nullable=False)
     jogterulet = Column(String(250), nullable=False)
@@ -48,6 +48,7 @@ class Hatarozat(Base):
     egyedi_azonosito = Column(String(250), unique=True, index=True, nullable=False)
     jogszabalyhelyek = Column(String)
     elvi_tartalma = Column(String)
+    kapcsolodo_hatarozatok = Column(String)
 
     # Additional
     url = Column(String)

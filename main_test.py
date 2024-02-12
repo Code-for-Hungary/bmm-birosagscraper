@@ -1,5 +1,6 @@
 import time
-from itertools import combinations, islice
+import logging
+from datetime import datetime
 
 from selenium.webdriver import ActionChains
 from selenium.webdriver.common.by import By
@@ -10,8 +11,10 @@ from results_extraction import get_rows
 from form_options_extraction import extract_form_options, form_xpaths
 from utils import get_form_option_and_date_combinations, simple_find_or_none
 
+from sql_stuff.models import Hatarozat
 from sql_stuff.database import Session
-from sql_stuff.models import Hatarozat, kapcsolodo_hatarozatok_table
+
+logging.basicConfig(filename=f'logs/{datetime.today().isoformat()}.log', encoding='utf-8', level=logging.DEBUG)
 
 scroll_into_view_js_code = "arguments[0].scrollIntoView();"
 
@@ -49,16 +52,14 @@ def main(year_start=2022):
     form_options = extract_form_options(driver)
     form_combinations = get_form_option_and_date_combinations(form_options, year_start=year_start)
 
-    # Saved hatarozatok
+    # Saved Hatarozat sorszam from SQL
     with Session() as session:
-        existing_hatarozat_sorszam = [s for s in session.execute(select(Hatarozat.sorszam))]
+        existing_hatarozat_sorszam = [s[0] for s in session.execute(select(Hatarozat.sorszam))]
         existing_hatarozat_sorszam = set(existing_hatarozat_sorszam)
 
-    # Kapcsolodo hatarozatok save
-    kapcsolodo_hatarozatok_pairs = set()
-
     for combination in form_combinations:
-        print(f'RUNNING SEARCH COMBINATION: {combination}')
+
+        logging.info(f'RUNNING SEARCH COMBINATION: {combination}')
         time.sleep(1)
         year = combination.pop('year')
 
@@ -67,12 +68,8 @@ def main(year_start=2022):
             form_value_option_xpath = f'//ul[@class="select2-results__options"]/li[contains(text(), "{form_value}")]'
             dropdown = driver.find_element(by=By.XPATH, value=form_xpaths[form_option]['xpath'])
             ActionChains(driver).move_to_element(dropdown).perform()
-
-            # driver.execute_script(scroll_into_view_js_code, dropdown)  # scroll into view
             time.sleep(1)
-            # dropdown = driver.find_element(by=By.XPATH, value=form_xpaths[form_option]['xpath'])
             dropdown_select_by_text(driver, dropdown, form_value_option_xpath)
-
 
         # Select year
         date_to_and_from_option_xpath = f'//ul[@class="select2-results__options"]/li[contains(text(), "{year}")]'
@@ -86,9 +83,9 @@ def main(year_start=2022):
         to_dropdown = driver.find_element(by=By.XPATH, value=form_options_year['to']['xpath'])
         dropdown_select_by_text(driver, to_dropdown, date_to_and_from_option_xpath, scroll_for_date=True)
 
-
         kereses_button.click()
         time.sleep(2)
+
         # Make sure results are not truncated.
         number_of_results = driver.find_element(by=By.XPATH,
                                                 value='//div[@class="table-data main-content"]/div[@class="count-wrappe'
@@ -115,19 +112,10 @@ def main(year_start=2022):
                 # Year
                 hatarozat_vals['year'] = year
 
-                # Kapcsolodo hatarozatok
-                kapcsolodo_hatarozatok = res.pop('kapcsolodo_hatarozatok', [])  # TODO can this be none?
-                if len(kapcsolodo_hatarozatok) > 0:
-                    kapcsolodo_hatarozatok.append(res['sorszam'])
-                    for pair in combinations(kapcsolodo_hatarozatok, 2):
-                        kapcsolodo_hatarozatok_pairs.add(tuple(sorted(pair)))
-
                 insert_rows_hatarozat.append(hatarozat_vals)
-            else:
-                print(f'Sorszám duplicate: ', res['sorszam'])
 
         if len(insert_rows_hatarozat) > 0:
-            print(f'INSERTING {len(insert_rows_hatarozat)} HATAROZAT')
+            logging.info(f'INSERTING {len(insert_rows_hatarozat)} HATAROZAT')
             with Session() as session:
                 session.execute(
                     insert(Hatarozat),
@@ -135,20 +123,11 @@ def main(year_start=2022):
                 )
                 session.commit()
 
-    kapcs_hat_it = iter(kapcsolodo_hatarozatok_pairs)
-    with Session() as session:
-        while True:
-            chunk = [{'id-1': sl[0], 'id-2': sl[1]} for sl in islice(kapcs_hat_it, 100)]
-            if not chunk:
-                break
-            session.execute(
-                insert(kapcsolodo_hatarozatok_table),
-                chunk
-            )
+    logging.info('FINISHED CRAWL :)')
 
 
 def collect_page_rows_and_go_to_next(driver):
-    time.sleep(1)
+
     # Extract rows data
     yield from get_rows(driver)
 
