@@ -107,6 +107,7 @@ def main(year_start=2022):
         for res in collect_page_rows_and_go_to_next(driver):
             # Check if saved
             if res['sorszam'] not in existing_hatarozat_sorszam:
+                existing_hatarozat_sorszam.add(res['sorszam'])  # dirty fix
                 # Base values
                 hatarozat_vals = {k: v for k, v in res.items() if k in hatarozat_cols}
                 # URL
@@ -122,6 +123,8 @@ def main(year_start=2022):
                         kapcsolodo_hatarozatok_pairs.add(tuple(sorted(pair)))
 
                 insert_rows_hatarozat.append(hatarozat_vals)
+            else:
+                print(f'Sorszám duplicate: ', res['sorszam'])
 
         if len(insert_rows_hatarozat) > 0:
             print(f'INSERTING {len(insert_rows_hatarozat)} HATAROZAT')
@@ -194,4 +197,4 @@ def scroll_to_form(driver):
 
 
 if __name__ == '__main__':
-    main(year_start=1988)
+    main(year_start=2020)
