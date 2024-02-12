@@ -14,7 +14,7 @@ from utils import get_form_option_and_date_combinations, simple_find_or_none
 from sql_stuff.models import Hatarozat
 from sql_stuff.database import Session
 
-logging.basicConfig(filename=f'logs/{datetime.today().isoformat()}.log', encoding='utf-8', level=logging.DEBUG)
+logging.basicConfig(filename=f'logs/{datetime.today().isoformat()}.log', level=logging.DEBUG)
 
 scroll_into_view_js_code = "arguments[0].scrollIntoView();"
 
