@@ -23,7 +23,7 @@ detail_column_values = {'Egyedi azonositó': 'egyedi_azonosito',
                         'A határozat elvi tartalma': 'elvi_tartalma'}
 
 
-def get_rows(driver):
+def get_rows(driver, existing_azonosito_list):
     time.sleep(2)
     # main_rows = driver.find_elements(by=By.XPATH, value='//tbody[@id="anonimHatarozatGridContent"]/tr[@class="add-border-top"]')
     # detail_rows = driver.find_elements(by=By.XPATH, value='//tbody[@id="anonimHatarozatGridContent"]/tr[not(@class="add-border-top")]')  # not(contains(@title,'短期'))
@@ -38,17 +38,17 @@ def get_rows(driver):
         if row.get_attribute("class") != '':
             if len(all_rows) != row_n + 1:
                 ActionChains(driver).move_to_element(all_rows[row_n + 1]).perform()
-            yield from row_results_gen(main_row, detail_rows)
+            yield from row_results_gen(main_row, detail_rows, existing_azonosito_list)
             main_row = row
             detail_rows = []
             continue
 
         detail_rows.append(row)
 
-    yield from row_results_gen(main_row, detail_rows)
+    yield from row_results_gen(main_row, detail_rows, existing_azonosito_list)
 
 
-def row_results_gen(main_row, detail_rows):
+def row_results_gen(main_row, detail_rows, existing_azonosito_list):
 
     # Get metadata
     row_data = {}
@@ -77,26 +77,33 @@ def row_results_gen(main_row, detail_rows):
 
         get_values_from_detail_row(detail_rows[1], row_data)
 
-    # 3) Download file
-    download_dropdown_button = main_row.find_element(by=By.TAG_NAME, value='button')
-    download_dropdown_button.click()
-    download_a_tag = main_row.find_element(by=By.XPATH, value='.//a[@id="letoltesPopupButton"]')
-    download_a_tag.click()
-    time.sleep(1)
-    main_row.find_element(by=By.TAG_NAME, value='td').click()
+    if row_data['egyedi_azonosito'] in existing_azonosito_list:
+        yield None
+    else:
+        # 3) Download file
+        download_dropdown_button = main_row.find_element(by=By.TAG_NAME, value='button')
+        download_dropdown_button.click()
+        download_a_tag = main_row.find_element(by=By.XPATH, value='.//a[@id="letoltesPopupButton"]')
+        download_a_tag.click()  # TODO not interactable
+        time.sleep(0.5)
+        try:
+            main_row.find_element(by=By.TAG_NAME, value='td').click()
 
-    downloaded_filepaths = list(download_directory_path.glob('*'))
-    if len(downloaded_filepaths) > 1:
-        raise Warning('Temporary download directory has more than one file, they will all be deleted!')
-    for downloaded_file in downloaded_filepaths:
-        # create new filepath
-        new_file_name = slugify(row_data['egyedi_azonosito']) + downloaded_file.suffix
-        new_file_path = save_directory_path / new_file_name
-        new_file_path.write_bytes(downloaded_file.read_bytes())
-        downloaded_file.unlink()
-        row_data['filepath'] = new_file_name
+            downloaded_filepaths = list(download_directory_path.glob('*'))
+            if len(downloaded_filepaths) > 1:
+                raise Warning('Temporary download directory has more than one file, they will all be deleted!')
+            for downloaded_file in downloaded_filepaths:
+                # create new filepath
+                new_file_name = slugify(row_data['egyedi_azonosito']) + downloaded_file.suffix
+                new_file_path = save_directory_path / new_file_name
+                new_file_path.write_bytes(downloaded_file.read_bytes())
+                downloaded_file.unlink()
+                row_data['filepath'] = new_file_name
 
-    yield row_data
+            yield row_data
+        except:  # TODO
+            print('COULDNT DOWNLOAD', row_data)
+            yield None
 
 
 def get_values_from_detail_row(detial_row, row_data):
