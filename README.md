@@ -1,4 +1,4 @@
-# birosag-backend
+# bmm-birosagscraper
 https://eakta.birosag.hu/anonimizalt-hatarozatok scraper
 
 # INSTALL
