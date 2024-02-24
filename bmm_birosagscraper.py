@@ -226,7 +226,13 @@ def main(config_path, with_backend=False):
 
 
 if __name__ == '__main__':
-    parser = ArgumentParser()
-    parser.add_argument('config_path', help='Path to config file!')
-    args = parser.parse_args()
-    main(args.config_path, with_backend=False)
+    # parser = ArgumentParser()
+    # parser.add_argument('config_path', help='Path to config file!')
+    # args = parser.parse_args()
+    # main(args.config_path, with_backend=False)
+
+    config = configparser.ConfigParser()
+    config.read('config.ini')
+    db = BmmBirosagDB(config['DEFAULT']['database_name'])
+    result = db.get_all_new()
+    pass

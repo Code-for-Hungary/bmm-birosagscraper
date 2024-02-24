@@ -102,6 +102,11 @@ class BmmBirosagDB:
         return results
 
     def get_all_new(self):
+        """
+        :return: tuple of results. (egyedi_azonosito, azonosito, birosag, kollegium, jogterulet, year,
+                                    jogszabalyhelyek, rezume, index_id, url, download_url, content, lemmacontent,
+                                    scrape_date, isnew)
+        """
         c = self.connection.cursor()
 
         c.execute('SELECT * FROM hatarozatok WHERE isnew=1')
