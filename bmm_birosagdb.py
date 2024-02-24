@@ -1,6 +1,6 @@
 import os
 import sqlite3
-
+from itertools import chain
 
 class BmmBirosagDB:
 
@@ -122,4 +122,4 @@ class BmmBirosagDB:
 
         results = c.fetchall()
         c.close()
-        return set(results)
+        return set(chain(*results))
