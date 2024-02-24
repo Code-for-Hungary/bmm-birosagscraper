@@ -1,5 +1,6 @@
 import logging
 import configparser
+from pathlib import Path
 from datetime import datetime
 from itertools import product
 from tempfile import TemporaryFile
@@ -142,6 +143,7 @@ def download_data(year_start, existing_azonosito_set, api_url, db, nlp):
                 # Save to database
                 db.save_hatarozat(response_list_item)
                 existing_azonosito_set.add(egyedi_azonosito)
+                logging.info(f'Downloaded hatarozat with egyedi_azonosito: {egyedi_azonosito}')
 
         db.commit_connection()  # Commit for every combination
 
@@ -171,6 +173,7 @@ def handle_events(backend, config, contenttpl, db):
             if config['DEFAULT']['donotnotify'] == '0':
                 backend.notify_event(event['id'], content)
                 logging.info(f"Notified: {event['id']} - {event['type']} - {event['parameters']}")
+
     return found_ids
 
 
@@ -230,4 +233,10 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('config_path', help='Path to config file!')
     args = parser.parse_args()
+
+    # Create logs dir
+    logs_dir = Path('./logs')
+    if logs_dir.is_dir() is False:
+        logs_dir.mkdir(exist_ok=True, parents=True)
+
     main(args.config_path, with_backend=False)
