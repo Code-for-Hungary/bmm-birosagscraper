@@ -94,32 +94,34 @@ def download_data(year_start, existing_azonosito_set, api_url, db, nlp):
             egyedi_azonosito = response_list_item['EgyediAzonosito']
             if egyedi_azonosito not in existing_azonosito_set:
 
-                # get scrape date
-                response_list_item['scrape_date'] = datetime.today().isoformat()
+                # Get scrape date-time
+                response_list_item['scrape_date'] = datetime.today().strftime("%Y-%m-%dT%H-%M")
 
-                # create url
+                # Create url
                 url = f'https://eakta.birosag.hu//anonimizalt-hatarozatok?azonosito={response_list_item["Azonosito"]}' \
                       f'&birosag={response_list_item["MeghozoBirosag"]}'
                 response_list_item['url'] = url
 
-                # create download_url
+                # Create download_url
                 birosag = response_list_item['MeghozoBirosag']
                 azonosito = response_list_item['Azonosito']
                 index_id = response_list_item['IndexId']
                 response_list_item['download_url'] = \
                     f'{LETOLTES_URL_START}/?birosagName={birosag}&ugyszam={azonosito}&azonosito={index_id}'
 
-                # download file TODO handle errors
+                # Download file TODO handle errors
                 download_resp = requests.get(response_list_item['download_url'])
                 if download_resp.status_code == 200:
                     downloaded_content = download_resp.content
                 else:
                     raise FileNotFoundError(f'Could not download file for {response_list_item}')
+
                 if download_resp.headers['Content-Type'] != \
                         'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
                     raise NotImplementedError(f'Receive Content-Type not handled: '
                                               f'{download_resp.headers["Content-Type"]}')
 
+                # Create temporary file to save docx
                 temp = TemporaryFile()
                 temp.write(downloaded_content)
                 temp.seek(0)
@@ -132,15 +134,14 @@ def download_data(year_start, existing_azonosito_set, api_url, db, nlp):
                 # Lemmatize if needed
                 lemmas = []
                 if nlp is not None:
-                    # lemmas = lemmatize(nlp, response_list_item['content'])
                     lemmas = lemmatize(nlp, response_list_item['paragraphs'])
+
                 response_list_item['lemmacontent'] = " ".join(lemmas)
                 response_list_item['content'] = '\n'.join(response_list_item.pop('paragraphs'))
 
                 # Save to database
                 db.save_hatarozat(response_list_item)
                 existing_azonosito_set.add(egyedi_azonosito)
-                print('SAVED ONE')
 
         db.commit_connection()  # Commit for every combination
 
@@ -226,13 +227,7 @@ def main(config_path, with_backend=False):
 
 
 if __name__ == '__main__':
-    # parser = ArgumentParser()
-    # parser.add_argument('config_path', help='Path to config file!')
-    # args = parser.parse_args()
-    # main(args.config_path, with_backend=False)
-
-    config = configparser.ConfigParser()
-    config.read('config.ini')
-    db = BmmBirosagDB(config['DEFAULT']['database_name'])
-    result = db.get_all_new()
-    pass
+    parser = ArgumentParser()
+    parser.add_argument('config_path', help='Path to config file!')
+    args = parser.parse_args()
+    main(args.config_path, with_backend=False)
