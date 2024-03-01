@@ -168,7 +168,7 @@ def handle_events(backend, config, contenttpl, db):
         if result:
             content = ''
             for res in result:
-                content = content + contenttpl.render(contract=res)
+                content = content + contenttpl.render(hatarozat=res)
 
             if config['DEFAULT']['donotnotify'] == '0':
                 backend.notify_event(event['id'], content)
