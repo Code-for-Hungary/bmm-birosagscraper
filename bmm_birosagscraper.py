@@ -1,3 +1,4 @@
+import time
 import logging
 import configparser
 from pathlib import Path
@@ -7,14 +8,30 @@ from tempfile import TemporaryFile
 from argparse import ArgumentParser
 
 import huspacy
-import requests
 from docx import Document
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+from requests import RequestException, get as requests_get, post as requests_post
 
 from bmm_backend import BmmBackend
 from bmm_birosagdb import BmmBirosagDB
 from bmm_tools import lemmatize, searchstringtofts
 from birosag_api_configs import BIROSAG_API_FORMDATA_BASE, LETOLTES_URL_START, FORM_OPTIONS
+
+
+def make_request(url, request_func, request_args={}, retry=5):
+    for i in range(1, retry + 1):
+        try:
+            response = request_func(url, **request_args, timeout=10)
+            if response.status_code != 200:
+                logging.warning(f'Could not get response for {url} -- {request_args} on try {i}. '
+                                f'Retrying.!')
+            else:
+                return response
+        except RequestException as e:
+            logging.warning(f'Network error happened (retry, {i}, ): {e}')
+            time.sleep(5)
+    else:
+        raise RequestException(f'Could not get response for: {url} -- {request_args}')
 
 
 def get_form_option_and_date_combinations(form_options: dict, year_start=1998):
@@ -38,12 +55,8 @@ def response_list_gen(form_data_combination, api_url, result_start_index):
     form_data_combination['ResultStartIndex'] = str(result_start_index)
 
     # Make request
-    response = requests.post(api_url, data=form_data_combination)
-    if response.status_code == 200:
-        response_data = response.json()
-    else:
-        raise requests.exceptions.RequestException(f'Could not get response for combination '
-                                                   f'{form_data_combination} !')
+    response = make_request(api_url, requests_post, {'data': form_data_combination})
+    response_data = response.json()
 
     count = response_data['Count']
     if count == 10000:
@@ -54,7 +67,6 @@ def response_list_gen(form_data_combination, api_url, result_start_index):
     if len(response_list) > 0:
         for elem in response_list:
             yield elem
-        # yield from iter(response_list)
 
     if len(response_list) == 100:
         yield from response_list_gen(form_data_combination, api_url, result_start_index + 100)
@@ -84,13 +96,14 @@ def download_data(year_start, existing_azonosito_set, api_url, db, nlp):
     combinations = get_form_option_and_date_combinations(FORM_OPTIONS, year_start)
 
     for form_data_combination in combinations:
-
+        print(form_data_combination)
         form_data = BIROSAG_API_FORMDATA_BASE.copy()
 
         form_data.update(form_data_combination)
 
         results_start_index = 0  # ResultStartIndex
 
+        committed_counter = 0
         for response_list_item in response_list_gen(form_data, api_url, results_start_index):
             egyedi_azonosito = response_list_item['EgyediAzonosito']
             if egyedi_azonosito not in existing_azonosito_set:
@@ -110,17 +123,13 @@ def download_data(year_start, existing_azonosito_set, api_url, db, nlp):
                 response_list_item['download_url'] = \
                     f'{LETOLTES_URL_START}/?birosagName={birosag}&ugyszam={azonosito}&azonosito={index_id}'
 
-                # Download file TODO handle errors
-                download_resp = requests.get(response_list_item['download_url'])
-                if download_resp.status_code == 200:
-                    downloaded_content = download_resp.content
-                else:
-                    raise FileNotFoundError(f'Could not download file for {response_list_item}')
-
-                if download_resp.headers['Content-Type'] != \
+                # Download file
+                response = make_request(response_list_item['download_url'], requests_get)
+                if response.headers['Content-Type'] != \
                         'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
                     raise NotImplementedError(f'Receive Content-Type not handled: '
-                                              f'{download_resp.headers["Content-Type"]}')
+                                              f'{response.headers["Content-Type"]}')
+                downloaded_content = response.content
 
                 # Create temporary file to save docx
                 temp = TemporaryFile()
@@ -143,9 +152,12 @@ def download_data(year_start, existing_azonosito_set, api_url, db, nlp):
                 # Save to database
                 db.save_hatarozat(response_list_item)
                 existing_azonosito_set.add(egyedi_azonosito)
+                committed_counter += 1
                 logging.info(f'Downloaded hatarozat with egyedi_azonosito: {egyedi_azonosito}')
 
-        db.commit_connection()  # Commit for every combination
+        if committed_counter > 0:
+            logging.info(f'Committed {committed_counter} new rows to db for form_data_combination {form_data_combination}')
+            db.commit_connection()  # Commit for every combination
 
 
 def handle_events(backend, config, contenttpl, db):
@@ -165,7 +177,7 @@ def handle_events(backend, config, contenttpl, db):
             for res in result:
                 found_ids.append(res[0])
 
-        if result:
+        if result is not None and len(result) > 0:
             content = ''
             for res in result:
                 content = content + contenttpl.render(hatarozat=res)
@@ -177,7 +189,7 @@ def handle_events(backend, config, contenttpl, db):
     return found_ids
 
 
-def main(config_path, with_backend=False):
+def main(config_path):
     config = configparser.ConfigParser()
     config.read(config_path)
 
@@ -208,23 +220,21 @@ def main(config_path, with_backend=False):
     # Download
     download_data(year_start, db.get_existing_azonosito_set(), config['Download']['url'], db, nlp)
 
-    # Backend Events TODO ez a with_backend majd nem lesz
-    if with_backend:
-        # Jinja template
-        env = Environment(
-            loader=FileSystemLoader('templates'),
-            autoescape=select_autoescape()
-        )
-        contenttpl = env.get_template('content.html')
+    # Jinja template
+    env = Environment(
+        loader=FileSystemLoader('templates'),
+        autoescape=select_autoescape()
+    )
+    contenttpl = env.get_template('content.html')
 
-        # Backend TODO
-        backend = BmmBackend(config['DEFAULT']['monitor_url'], config['DEFAULT']['uuid'])
+    # Backend
+    backend = BmmBackend(config['DEFAULT']['monitor_url'], config['DEFAULT']['uuid'])
 
-        # Events TODO
-        found_ids = handle_events(backend, config, contenttpl, db)
+    # Events
+    found_ids = handle_events(backend, config, contenttpl, db)
 
-        if config['DEFAULT']['staging'] == '0':
-            clear_is_new(found_ids, db)
+    if config['DEFAULT']['staging'] == '0':
+        clear_is_new(found_ids, db)
 
     db.close_connection()
 
@@ -239,4 +249,4 @@ if __name__ == '__main__':
     if logs_dir.is_dir() is False:
         logs_dir.mkdir(exist_ok=True, parents=True)
 
-    main(args.config_path, with_backend=False)
+    main(args.config_path)

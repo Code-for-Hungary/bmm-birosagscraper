@@ -86,7 +86,7 @@ class BmmBirosagDB:
     def clear_is_new(self, egyedi_azonosito):
         c = self.connection.cursor()
 
-        c.execute('UPDATE hatarozatok SET isnew=0 WHERE number=?', (egyedi_azonosito,))
+        c.execute('UPDATE hatarozatok SET isnew=0 WHERE egyedi_azonosito=?', (egyedi_azonosito,))
 
         c.close()
 
