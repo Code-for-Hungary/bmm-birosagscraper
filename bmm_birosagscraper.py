@@ -112,7 +112,7 @@ def download_data(year_start, existing_azonosito_set, api_url, db, nlp):
                 response_list_item['scrape_date'] = datetime.today().strftime("%Y-%m-%dT%H-%M")
 
                 # Create url
-                url = f'https://eakta.birosag.hu//anonimizalt-hatarozatok?azonosito={response_list_item["Azonosito"]}' \
+                url = f'https://eakta.birosag.hu/anonimizalt-hatarozatok?azonosito={response_list_item["Azonosito"]}' \
                       f'&birosag={response_list_item["MeghozoBirosag"]}'
                 response_list_item['url'] = url
 
