@@ -18,7 +18,7 @@ from bmm_tools import lemmatize, searchstringtofts
 from birosag_api_configs import BIROSAG_API_FORMDATA_BASE, LETOLTES_URL_START, FORM_OPTIONS
 
 
-def make_request(url, request_func, request_args={}, retry=5):
+def make_request(url, request_func, request_args={}, retry=10):
     for i in range(1, retry + 1):
         try:
             response = request_func(url, **request_args, timeout=10)
@@ -29,7 +29,7 @@ def make_request(url, request_func, request_args={}, retry=5):
                 return response
         except RequestException as e:
             logging.warning(f'Network error happened (retry, {i}, ): {e}')
-            time.sleep(5)
+            time.sleep(i*5)
     else:
         raise RequestException(f'Could not get response for: {url} -- {request_args}')
 
@@ -164,12 +164,12 @@ def handle_events(backend, config, contenttpl, db):
     found_ids = []
     events = backend.get_events()
     for event in events['data']:
-        result = None
+        result = ()
 
         if event['type'] == 1:
             keresoszo = searchstringtofts(event['parameters'])
             if keresoszo:
-                result = db.search_records(keresoszo)
+                result, snippet_results = db.search_records(keresoszo)
                 for res in result:
                     found_ids.append(res[0])
         else:
@@ -177,14 +177,14 @@ def handle_events(backend, config, contenttpl, db):
             for res in result:
                 found_ids.append(res[0])
 
-        if result is not None and len(result) > 0:
+        if config['DEFAULT']['donotnotify'] == '0' and len(result) > 0:
             content = ''
             for res in result:
-                content = content + contenttpl.render(hatarozat=res)
+                snippets = snippet_results.get(res[0], ())
+                content = content + contenttpl.render(hatarozat=res, snippets=snippets)
 
-            if config['DEFAULT']['donotnotify'] == '0':
-                backend.notify_event(event['id'], content)
-                logging.info(f"Notified: {event['id']} - {event['type']} - {event['parameters']}")
+            backend.notify_event(event['id'], content)
+            logging.info(f"Notified: {event['id']} - {event['type']} - {event['parameters']}")
 
     return found_ids
 

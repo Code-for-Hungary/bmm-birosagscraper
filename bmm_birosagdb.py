@@ -98,8 +98,26 @@ class BmmBirosagDB:
                   (keyword,))
 
         results = c.fetchall()
+
+        snippet_results = []
+        if len(results) > 0:
+            c.execute('''
+            SELECT egyedi_azonosito, snippet(hatarozatok_fts, 1, '[PAD]', '[PAD]', '...', 5) FROM hatarozatok_fts WHERE hatarozatok_fts MATCH ? AND egyedi_azonosito IN
+            (SELECT egyedi_azonosito FROM hatarozatok WHERE isnew=1 AND egyedi_azonosito IN
+            (SELECT egyedi_azonosito FROM hatarozatok_fts WHERE hatarozatok_fts MATCH ?)
+            )
+            ''', (keyword, keyword))
+
+            snippet_results = c.fetchall()
+
+            if len(snippet_results) > 0:
+                for egyedi_azonosito, snippet in snippet_results:
+                    clean_snippet = snippet.replace('\xa0', ' ')
+
+                snippet_results = {res[0]: res[1] for res in snippet_results}
+
         c.close()
-        return results
+        return results, snippet_results
 
     def get_all_new(self):
         """
