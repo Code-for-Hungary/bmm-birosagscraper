@@ -104,16 +104,34 @@ class BmmBirosagDB:
         snippets = []
         if len(results) > 0:
 
-            keyword_regex = f'.{{0,80}}(?i){keyword}.{{0,80}}'
             for res in results:
                 result_snippets = []
-                content = res[-3]
-                matches = re.findall(keyword_regex, content)  # , re.IGNORECASE
-                for match in matches[:5]:  # add only 5
-                    left_i = match.find(' ')
-                    right_i = match.rfind(' ')
-                    result_snippets.append(f'...{match[left_i: right_i]}...')
+                content = res[-4]
+
+                for match in re.finditer(keyword, content, re.IGNORECASE):
+
+                    match_start = match.start()
+                    match_end = match.end()
+
+                    before = content[max(match_start-80, 0): match_start]
+                    left_i = before.find(' ')
+
+                    after = content[match_end:match_end+80]
+                    right_i = after.rfind(' ')
+
+                    result_snippets.append((f'...{before[left_i:]}', match.group(), f'{after[:right_i]}...'))
                 snippets.append(result_snippets)
+
+            # keyword_regex = f'.{{0,80}}(?i){keyword}.{{0,80}}'
+            # for res in results:
+            #     result_snippets = []
+            #     content = res[-4]
+            #     matches = re.findall(keyword_regex, content)  # , re.IGNORECASE
+            #     for match in matches[:5]:  # add only 5
+            #         left_i = match.find(' ')
+            #         right_i = match.rfind(' ')
+            #         result_snippets.append(f'...{match[left_i: right_i]}...')
+            #     snippets.append(result_snippets)
 
         c.close()
         return results, snippets
