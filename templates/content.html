@@ -26,4 +26,12 @@
     <span class="bmm-event-label">Letöltés:</span>
     <span class="bmm-event-data"><a href="{{ hatarozat[10] }}">Kattints ide!</a></span>
 </div>
+{% if snippets|length > 0 %}
+    <div>
+        <span class="bmm-event-label">Előfordulás példák:</span>
+        {% for snippet in snippets %}
+            <span class="bmm-event-data"> <b>·</b> {{ snippet[0] }}<b>{{ snippet[1] }}</b>{{ snippet[2] }}</span>
+        {% endfor %}
+    </div>
+{% endif %}
 <div class="bmm-event-separator">&nbsp;</div>
