@@ -122,17 +122,6 @@ class BmmBirosagDB:
                     result_snippets.append((f'...{before[left_i:]}', match.group(), f'{after[:right_i]}...'))
                 snippets.append(result_snippets)
 
-            # keyword_regex = f'.{{0,80}}(?i){keyword}.{{0,80}}'
-            # for res in results:
-            #     result_snippets = []
-            #     content = res[-4]
-            #     matches = re.findall(keyword_regex, content)  # , re.IGNORECASE
-            #     for match in matches[:5]:  # add only 5
-            #         left_i = match.find(' ')
-            #         right_i = match.rfind(' ')
-            #         result_snippets.append(f'...{match[left_i: right_i]}...')
-            #     snippets.append(result_snippets)
-
         c.close()
         return results, snippets
 
