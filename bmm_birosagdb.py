@@ -108,7 +108,7 @@ class BmmBirosagDB:
                 result_snippets = []
                 content = res[-4]
 
-                for match in re.finditer(keyword, content, re.IGNORECASE):
+                for match, _i in zip(re.finditer(keyword, content, re.IGNORECASE), range(5)):
 
                     match_start = match.start()
                     match_end = match.end()

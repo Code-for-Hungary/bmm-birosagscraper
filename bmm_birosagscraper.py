@@ -173,13 +173,14 @@ def handle_events(backend, config, contenttpl, db):
                 result, snippets = db.search_records(keresoszo)
                 for res in result:
                     found_ids.append(res[0])
+
         else:
             result = db.get_all_new()
             for res in result:
                 found_ids.append(res[0])
 
         if config['DEFAULT']['donotnotify'] == '0' and len(result) > 0:
-            content = ''
+            content = f'<div><snap class="bmm-event-label">Találatok száma: {len(result)}</snap></div><br>'
             for res, snippet in zip(result, snippets):
                 content = content + contenttpl.render(hatarozat=res, snippets=snippet)
 

@@ -28,9 +28,10 @@
 </div>
 {% if snippets|length > 0 %}
     <div>
-        <span class="bmm-event-label">Előfordulás példák:</span>
+        <span class="bmm-event-label">Előfordulás példák:</span><br>
         {% for snippet in snippets %}
-            <span class="bmm-event-data"> <b>·</b> {{ snippet[0] }}<b>{{ snippet[1] }}</b>{{ snippet[2] }}</span>
+            <span class="bmm-event-data"><b>&emsp;·</b> {{ snippet[0] }}<b>{{ snippet[1] }}</b>{{ snippet[2] }}</span>
+            <br>
         {% endfor %}
     </div>
 {% endif %}
