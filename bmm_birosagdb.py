@@ -3,6 +3,8 @@ import re
 import sqlite3
 from itertools import chain
 
+from bmm_tools import gather_snippets
+
 
 class BmmBirosagDB:
 
@@ -92,7 +94,7 @@ class BmmBirosagDB:
 
         c.close()
 
-    def search_records(self, keyword):
+    def search_records(self, keyword, original_keyword):
         c = self.connection.cursor()
 
         c.execute('SELECT * FROM hatarozatok WHERE isnew=1 AND egyedi_azonosito IN '
@@ -103,24 +105,7 @@ class BmmBirosagDB:
 
         snippets = []
         if len(results) > 0:
-
-            for res in results:
-                result_snippets = []
-                content = res[-4]
-
-                for match, _i in zip(re.finditer(keyword, content, re.IGNORECASE), range(5)):
-
-                    match_start = match.start()
-                    match_end = match.end()
-
-                    before = content[max(match_start-80, 0): match_start]
-                    left_i = before.find(' ')
-
-                    after = content[match_end:match_end+80]
-                    right_i = after.rfind(' ')
-
-                    result_snippets.append((f'...{before[left_i:]}', match.group(), f'{after[:right_i]}...'))
-                snippets.append(result_snippets)
+            snippets = gather_snippets(original_keyword, results, snippets)
 
         c.close()
         return results, snippets

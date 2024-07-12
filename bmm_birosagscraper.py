@@ -168,9 +168,10 @@ def handle_events(backend, config, contenttpl, db):
         snippets = repeat([])
 
         if event['type'] == 1:  # Event is of specific keyword
-            keresoszo = searchstringtofts(event['parameters'])
-            if keresoszo:
-                result, snippets = db.search_records(keresoszo)
+            keresoszo = event['parameters']
+            escaped_keresoszo = searchstringtofts(keresoszo)
+            if escaped_keresoszo:
+                result, snippets = db.search_records(escaped_keresoszo, keresoszo)
                 for res in result:
                     found_ids.append(res[0])
 
