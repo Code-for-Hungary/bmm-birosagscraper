@@ -167,14 +167,14 @@ def handle_events(backend, config, contenttpl, db):
         result = ()
         snippets = repeat([])
 
-        if event['type'] == 1:
+        if event['type'] == 1:  # Event is of specific keyword
             keresoszo = searchstringtofts(event['parameters'])
             if keresoszo:
                 result, snippets = db.search_records(keresoszo)
                 for res in result:
                     found_ids.append(res[0])
 
-        else:
+        else:  # Event is of whole database update
             result = db.get_all_new()
             for res in result:
                 found_ids.append(res[0])
@@ -186,6 +186,8 @@ def handle_events(backend, config, contenttpl, db):
 
             backend.notify_event(event['id'], content)
             logging.info(f"Notified: {event['id']} - {event['type']} - {event['parameters']}")
+        else:
+            logging.info(f"Did not notify: {event['id']} - {event['type']} - {event['parameters']}")
 
     return found_ids
 
@@ -235,6 +237,7 @@ def main(config_path):
     found_ids = handle_events(backend, config, contenttpl, db)
 
     if config['DEFAULT']['staging'] == '0':
+        print("CLEARING", found_ids)
         clear_is_new(found_ids, db)
 
     db.close_connection()

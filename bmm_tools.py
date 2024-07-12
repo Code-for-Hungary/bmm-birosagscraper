@@ -2,6 +2,7 @@ import re
 
 
 def searchstringtofts(searchstring):
+
     keresoszo = ''
     if isinstance(searchstring, str):
         keresoszo = searchstring.strip()
@@ -9,13 +10,10 @@ def searchstringtofts(searchstring):
         keresoszo = re.sub(r'([()\-])', '', keresoszo)
         if keresoszo:
             if not re.search(r'(["+*])', keresoszo):
-                keresoszo = re.sub(r'([\s])', ' + ', keresoszo) + '*'
+                # Add " to both ends of string to make it literal
+                keresoszo = '"' + re.sub(r'([\s])', ' + ', keresoszo) + '"' + '*'
 
     return keresoszo
-
-
-# def birosagtimestamp(tstamp):
-#     return int(tstamp) * 1000
 
 
 def lemmatize(nlp, texts):
