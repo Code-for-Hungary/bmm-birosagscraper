@@ -13,17 +13,17 @@ class BmmBackend:
 
         self.generatorID = generator_id
 
-    def get_events(self):
+    def get_events(self, api_key):
 
         try:
-            response = requests.get(f"{self.backendURL}/api/events/bygenerator/{self.generatorID}")
+            response = requests.get(f"{self.backendURL}/api/events/bygenerator/{self.generatorID}?api_key={api_key}")
             response = response.json()
             return response
         except Exception as e:
             logging.exception('Az eseményeket nem tudom lekérdezni a backendtől.')
             raise e
 
-    def notify_event(self, event_uuid, content):
+    def notify_event(self, event_uuid, content, api_key):
 
         notification_data = {
             'uuid': self.generatorID,
@@ -31,7 +31,7 @@ class BmmBackend:
             'content': content
         }
         try:
-            response = requests.post(f"{self.backendURL}/api/events/notify/{event_uuid}", data=notification_data)
+            response = requests.post(f"{self.backendURL}/api/events/notify/{event_uuid}?api_key={api_key}", data=notification_data)
             return response
         except Exception as e:
             logging.exception('A backend értesítése nem sikerült.')

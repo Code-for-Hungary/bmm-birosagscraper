@@ -160,9 +160,9 @@ def download_data(year_start, existing_azonosito_set, api_url, db, nlp):
             db.commit_connection()  # Commit for every combination
 
 
-def handle_events(backend, config, contenttpl, db):
+def handle_events(backend, config, contenttpl, db, api_key):
     found_ids = []
-    events = backend.get_events()
+    events = backend.get_events(api_key)
     for event in events['data']:
         result = ()
         snippets = repeat([])
@@ -185,7 +185,7 @@ def handle_events(backend, config, contenttpl, db):
             for res, snippet in zip(result, snippets):
                 content = content + contenttpl.render(hatarozat=res, snippets=snippet)
 
-            backend.notify_event(event['id'], content)
+            backend.notify_event(event['id'], content, api_key)
             logging.info(f"Notified: {event['id']} - {event['type']} - {event['parameters']}")
         else:
             logging.info(f"Did not notify: {event['id']} - {event['type']} - {event['parameters']}")
@@ -196,6 +196,7 @@ def handle_events(backend, config, contenttpl, db):
 def main(config_path):
     config = configparser.ConfigParser()
     config.read(config_path)
+    api_key = config['DEFAULT']['eventgenerator_api_key']
 
     # Logging
     logging.basicConfig(
@@ -235,7 +236,7 @@ def main(config_path):
     backend = BmmBackend(config['DEFAULT']['monitor_url'], config['DEFAULT']['uuid'])
 
     # Events
-    found_ids = handle_events(backend, config, contenttpl, db)
+    found_ids = handle_events(backend, config, contenttpl, db, api_key)
 
     if config['DEFAULT']['staging'] == '0':
         print("CLEARING", found_ids)
