@@ -26,4 +26,18 @@
     <span class="bmm-event-label">Letöltés:</span>
     <span class="bmm-event-data"><a href="{{ hatarozat["download_url"] }}">Kattints ide!</a></span>
 </div>
+
+<div class="bmm-event-label">
+    <b>Egyezések száma</b>: {{ hatarozat["result_count"] }}
+</div>
+
+<div class="bmm-event-label">
+    <b>Első egyezések</b>:
+    <ul>
+    {% for result in hatarozat["results"] %}
+        <li>"{{ result["before"] }}<b>{{ result["common"] }}</b>{{ result["after"] }}"</li>
+    {% endfor %}
+    </ul>
+</div>
+
 <div class="bmm-event-separator">&nbsp;</div>

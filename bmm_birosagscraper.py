@@ -8,6 +8,7 @@ from tempfile import TemporaryFile
 from argparse import ArgumentParser
 
 import huspacy
+import re
 from docx import Document
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from requests import RequestException, get as requests_get, post as requests_post
@@ -79,7 +80,44 @@ def clear_is_new(ids, db):
     db.commit_connection()
 
 
-def download_data(year_start, existing_azonosito_set, api_url, db, nlp):
+def search(entry, keyword, do_lemmatize=False):
+    text = entry["content"] if not do_lemmatize else entry["lemmacontent"]
+    keyword = keyword.replace('*', '').replace('"', '')
+    results = []
+    matches = [m.start() for m in re.finditer(re.escape(keyword), text, re.IGNORECASE)]
+
+    surrounding_context = 64
+
+    for match_index in matches:
+        before_context = text[max(0, match_index-surrounding_context):match_index]
+        after_context = text[match_index+len(keyword):match_index+len(keyword)+surrounding_context]
+        common_part = text[match_index:match_index+len(keyword)]
+
+        lemma_warn = ''
+        if do_lemmatize:
+            lemma_warn = "szótövezett találat: "
+
+        results.append(
+            {
+                "before": lemma_warn+before_context,
+                "after": after_context,
+                "common": common_part,
+            }
+        )
+    return results
+
+def find_matching_multiple(keywords, entry, config):
+    all_results = []
+    print("Searching for keywords:", keywords)
+    for keyword in keywords:
+        keyword_results = search(entry, keyword)
+        if not keyword_results and config['DEFAULT']['donotlemmatize'] == '0':
+            keyword_results = search(entry, keyword, do_lemmatize=True)
+        all_results += keyword_results
+    return all_results
+
+
+def download_data(year_start, existing_azonosito_set, api_url, db, nlp, just_download=False):
     """
     Get results for all query combinations, and save non-existing results to database. All combinations have to be
     queried to ensure all new 'hatarozat' are returned, as results only have 'year' metadata, no months or days are
@@ -91,6 +129,8 @@ def download_data(year_start, existing_azonosito_set, api_url, db, nlp):
     :param nlp: Huspacy instance
     :return: -
     """
+
+    entries = []
 
     # Get combinations are API responses for each
     combinations = get_form_option_and_date_combinations(FORM_OPTIONS, year_start)
@@ -107,6 +147,13 @@ def download_data(year_start, existing_azonosito_set, api_url, db, nlp):
         for response_list_item in response_list_gen(form_data, api_url, results_start_index):
             egyedi_azonosito = response_list_item['EgyediAzonosito']
             if egyedi_azonosito not in existing_azonosito_set:
+                if just_download:
+                    db.save_hatarozat(response_list_item)
+                    db.clear_is_new(egyedi_azonosito)
+                    entries.append((egyedi_azonosito, response_list_item.copy()))
+                    existing_azonosito_set.add(egyedi_azonosito)
+                    committed_counter += 1
+                    continue
 
                 # Get scrape date-time
                 response_list_item['scrape_date'] = datetime.today().strftime("%Y-%m-%dT%H-%M")
@@ -151,6 +198,7 @@ def download_data(year_start, existing_azonosito_set, api_url, db, nlp):
 
                 # Save to database
                 db.save_hatarozat(response_list_item)
+                entries.append((egyedi_azonosito, response_list_item.copy()))
                 existing_azonosito_set.add(egyedi_azonosito)
                 committed_counter += 1
                 logging.info(f'Downloaded hatarozat with egyedi_azonosito: {egyedi_azonosito}')
@@ -159,32 +207,33 @@ def download_data(year_start, existing_azonosito_set, api_url, db, nlp):
             logging.info(f'Committed {committed_counter} new rows to db for form_data_combination {form_data_combination}')
             db.commit_connection()  # Commit for every combination
 
+    return entries
 
-def handle_events(backend, config, contenttpl, db, api_key):
+
+def handle_events(backend, config, contenttpl, contenttpl_keyword, db, api_key, new_entries):
     found_ids = []
     events = backend.get_events(api_key)
     for event in events['data']:
         result = ()
         snippets = repeat([])
+        content = ''
 
         if event['type'] == 1:  # Event is of specific keyword
-            keresoszo = event['parameters']
-            escaped_keresoszo = searchstringtofts(keresoszo)
-            if escaped_keresoszo:
-                result, snippets = db.search_records(escaped_keresoszo, keresoszo)
-                for res in result:
-                    found_ids.append(res[0])
+            for entry in new_entries:
+                search_results = find_matching_multiple(event['parameters'].split(","), entry, config)
+                result_entry = entry.copy()
+                result_entry["result_count"] = len(search_results)
+                result_entry["results"] = search_results[:5]
+                if result_entry["results"]:
+                    content += contenttpl_keyword.render(hatarozat = result_entry)
+                found_ids.append(entry["egyedi_azonosito"])
 
         else:  # Event is of whole database update
-            result = db.get_all_new()
-            for res in result:
-                found_ids.append(res[0])
+            for entry in new_entries:
+                content = content + contenttpl.render(hatarozat = entry)
+                found_ids.append(entry["egyedi_azonosito"])
 
-        if config['DEFAULT']['donotnotify'] == '0' and len(result) > 0:
-            content = f'<div><snap class="bmm-event-label">Találatok száma: {len(result)}</snap></div><br>'
-            for res, snippet in zip(result, snippets):
-                content = content + contenttpl.render(hatarozat=res, snippets=snippet)
-
+        if config['DEFAULT']['donotnotify'] == '0' and content:
             backend.notify_event(event['id'], content, api_key)
             logging.info(f"Notified: {event['id']} - {event['type']} - {event['parameters']}")
         else:
@@ -193,9 +242,9 @@ def handle_events(backend, config, contenttpl, db, api_key):
     return found_ids
 
 
-def main(config_path):
+def main():
     config = configparser.ConfigParser()
-    config.read(config_path)
+    config.read_file(open('config.ini'))
     api_key = config['DEFAULT']['eventgenerator_api_key']
 
     # Logging
@@ -223,7 +272,9 @@ def main(config_path):
         nlp = None
 
     # Download
-    download_data(year_start, db.get_existing_azonosito_set(), config['Download']['url'], db, nlp)
+    just_download = config['DEFAULT'].getint('just_download', fallback=0) == 1
+    download_data(year_start, db.get_existing_azonosito_set(), config['Download']['url'], db, nlp, just_download)
+    new_entries = db.get_all_new()
 
     # Jinja template
     env = Environment(
@@ -231,12 +282,13 @@ def main(config_path):
         autoescape=select_autoescape()
     )
     contenttpl = env.get_template('content.html')
+    contenttpl_keyword = env.get_template('content_keyword.html')
 
     # Backend
     backend = BmmBackend(config['DEFAULT']['monitor_url'], config['DEFAULT']['uuid'])
 
     # Events
-    found_ids = handle_events(backend, config, contenttpl, db, api_key)
+    found_ids = handle_events(backend, config, contenttpl, contenttpl_keyword, db, api_key, new_entries)
 
     if config['DEFAULT']['staging'] == '0':
         print("CLEARING", found_ids)
@@ -248,11 +300,10 @@ def main(config_path):
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('config_path', help='Path to config file!')
-    args = parser.parse_args()
 
     # Create logs dir
     logs_dir = Path('./logs')
     if logs_dir.is_dir() is False:
         logs_dir.mkdir(exist_ok=True, parents=True)
 
-    main(args.config_path)
+    main()
