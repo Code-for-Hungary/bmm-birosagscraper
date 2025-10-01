@@ -1,3 +1,4 @@
+from difflib import SequenceMatcher
 import time
 import logging
 import configparser
@@ -80,27 +81,51 @@ def clear_is_new(ids, db):
     db.commit_connection()
 
 
-def search(entry, keyword, do_lemmatize=False):
-    text = entry["content"] if not do_lemmatize else entry["lemmacontent"]
+def search(text, keyword, nlp_warn=False):
     keyword = keyword.replace('*', '').replace('"', '')
     results = []
     matches = [m.start() for m in re.finditer(re.escape(keyword), text, re.IGNORECASE)]
-
-    surrounding_context = 64
+    
+    # Build a list of (word, start_position, end_position) tuples
+    word_positions = []
+    for match in re.finditer(r'\S+', text):
+        word_positions.append((match.group(), match.start(), match.end()))
 
     for match_index in matches:
-        before_context = text[max(0, match_index-surrounding_context):match_index]
-        after_context = text[match_index+len(keyword):match_index+len(keyword)+surrounding_context]
-        common_part = text[match_index:match_index+len(keyword)]
+        # Find which word contains this character position
+        word_index = 0
+        for i, (word, start_pos, end_pos) in enumerate(word_positions):
+            if start_pos <= match_index < end_pos:
+                word_index = i
+                break
 
-        lemma_warn = ''
-        if do_lemmatize:
-            lemma_warn = "szótövezett találat: "
+        # Get surrounding 10 words before and after the match
+        words = [w[0] for w in word_positions]  # Extract just the words
+        before = " ".join(words[max(word_index - 16, 0) : word_index])
+        after = " ".join(words[word_index + 1 : word_index + 17])
+        found_word = words[word_index]
+        match = SequenceMatcher(
+            None, found_word, keyword
+        ).find_longest_match()
+        match_before = found_word[: match.a]
+        if match_before != "":
+            before = before + " " + match_before
+        else:
+            before = before + " "
+        match_after = found_word[match.a + match.size :]
+        if match_after != "":
+            after = match_after + " " + after
+        else:
+            after = " " + after
+        common_part = found_word[match.a : match.a + match.size]
+
+        if nlp_warn:
+            before = "szótövezett találat: " + before
 
         results.append(
             {
-                "before": lemma_warn+before_context,
-                "after": after_context,
+                "before": before,
+                "after": after,
                 "common": common_part,
             }
         )
@@ -110,12 +135,12 @@ def find_matching_multiple(keywords, entry, config):
     all_results = []
     print("Searching for keywords:", keywords)
     for keyword in keywords:
-        keyword_results = search(entry, keyword)
-        if not keyword_results and config['DEFAULT']['donotlemmatize'] == '0':
-            keyword_results = search(entry, keyword, do_lemmatize=True)
+        keyword_results = search(entry["content"], keyword)
+        do_lemmatize = config['DEFAULT'].get('donotlemmatize', '0') == '0'
+        if not keyword_results and do_lemmatize:
+            keyword_results = search(entry["lemmacontent"], keyword, nlp_warn=True)
         all_results += keyword_results
     return all_results
-
 
 def download_data(year_start, existing_azonosito_set, api_url, db, nlp, just_download=False):
     """
@@ -214,8 +239,6 @@ def handle_events(backend, config, contenttpl, contenttpl_keyword, db, api_key, 
     found_ids = []
     events = backend.get_events(api_key)
     for event in events['data']:
-        result = ()
-        snippets = repeat([])
         content = ''
 
         if event['type'] == 1:  # Event is of specific keyword
