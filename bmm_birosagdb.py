@@ -82,8 +82,8 @@ class BmmBirosagDB:
             'jogszabalyhelyek, rezume, index_id, url, download_url, content, lemmacontent, scrape_date, isnew) '
             'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)',
             (entry['EgyediAzonosito'], entry['Azonosito'], entry['MeghozoBirosag'], entry['Kollegium'], entry['JogTerulet'],
-             entry['HatarozatEve'], entry['Jogszabalyhelyek'], entry['Rezume'], entry['IndexId'], entry['url'],
-             entry['download_url'], entry['content'], entry['lemmacontent'], entry['scrape_date']))
+             entry['HatarozatEve'], entry['Jogszabalyhelyek'], entry['Rezume'], entry['IndexId'], entry.get('url', None),
+             entry.get('download_url', None), entry.get('content', None), entry.get('lemmacontent', None), entry.get('scrape_date', None)))
 
         c.close()
 
@@ -112,15 +112,17 @@ class BmmBirosagDB:
 
     def get_all_new(self):
         """
-        :return: tuple of results. (egyedi_azonosito, azonosito, birosag, kollegium, jogterulet, year,
-                                    jogszabalyhelyek, rezume, index_id, url, download_url, content, lemmacontent,
-                                    scrape_date, isnew)
+        :return: list of dictionaries containing all new records with column names as keys
         """
         c = self.connection.cursor()
 
         c.execute('SELECT * FROM hatarozatok WHERE isnew=1')
-
-        results = c.fetchall()
+        
+        # Get column names from cursor description
+        columns = [desc[0] for desc in c.description]
+        # Convert tuples to dictionaries using column names as keys
+        results = [dict(zip(columns, row)) for row in c.fetchall()]
+        
         c.close()
         return results
 
